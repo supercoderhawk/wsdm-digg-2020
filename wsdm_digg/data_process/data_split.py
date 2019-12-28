@@ -1,0 +1,24 @@
+# -*- coding: UTF-8 -*-
+import random
+from pysenal import read_jsonline, write_jsonline
+from wsdm_digg.constants import *
+
+
+class DataSplitter(object):
+    def __init__(self, src_filename):
+        self.src_filename = src_filename
+
+    def split(self):
+        items = read_jsonline(self.src_filename)
+        random.shuffle(items)
+        random.shuffle(items)
+        random.shuffle(items)
+        training_count = int(len(items) * 0.9)
+        training_items = items[:training_count]
+        test_items = items[training_count:]
+        write_jsonline(DATA_DIR + 'train.jsonl', training_items)
+        write_jsonline(DATA_DIR + 'test.jsonl', test_items)
+
+
+if __name__ == '__main__':
+    DataSplitter(DATA_DIR + 'train_release.jsonl').split()

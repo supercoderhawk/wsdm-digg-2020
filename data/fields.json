@@ -1,0 +1,22 @@
+{
+  "properties": {
+    "paper_id": {
+      "type": "keyword"
+    },
+    "title": {
+      "type": "text",
+      "analyzer": "english_analyzer"
+    },
+    "abstract": {
+      "type": "text",
+      "analyzer": "english_analyzer"
+    },
+    "journal": {
+      "type": "keyword"
+    },
+    "keywords": {
+      "type": "text",
+      "analyzer": "english_analyzer"
+    }
+  }
+}

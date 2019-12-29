@@ -26,16 +26,17 @@ class RerankDataIterator(object):
         self.batch_size = loader.batch_size
         self.tokenizer = loader.tokenizer
         self.max_len = loader.max_len
+        self._batch_count_in_queue = 0
+        self._data = get_chunk(read_jsonline_lazy(self.src_filename), self.batch_size)
+
         self.workers = []
         for _ in range(self.num_workers):
             worker = Process(target=self._data_loop)
             self.workers.append(worker)
         self.__prefetch()
         for worker in self.workers:
-            worker.start()
             worker.daemon = True
-        self._batch_count_in_queue = 0
-        self._data = get_chunk(read_jsonline_lazy(self.src_filename), self.batch_size)
+            worker.start()
 
     def __iter__(self):
         for raw_batch in self._data:
@@ -101,7 +102,7 @@ class RerankDataIterator(object):
         mask_np = np.array(mask_ids_list)
         batch = {'{}_token'.format(prefix): token_np,
                  '{}_segment'.format(prefix): segment_np,
-                 '{}_mask'.format(mask_np): mask_np}
+                 '{}_mask'.format(prefix): mask_np}
         return batch
 
     def __del__(self):

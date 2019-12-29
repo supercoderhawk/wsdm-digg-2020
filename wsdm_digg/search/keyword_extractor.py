@@ -11,7 +11,7 @@ class KeywordExtractor(object):
     def __init__(self):
         self.nlp.add_pipe(self.nlp.create_pipe('sentencizer'))
 
-    def textrank(self, input_data, topk):
+    def textrank(self, input_data, topk,window_size, edge_weighting):
         if isinstance(input_data, spacy.tokens.Doc):
             doc = input_data
         elif isinstance(input_data, str):
@@ -19,8 +19,8 @@ class KeywordExtractor(object):
         else:
             raise TypeError('input is not spacy doc or text')
         textrank_ret = key_terms_from_semantic_network(doc=doc,
-                                                       window_width=2,
-                                                       edge_weighting='binary',
+                                                       window_width=window_size,
+                                                       edge_weighting=edge_weighting,
                                                        join_key_words=False,
                                                        n_keyterms=topk)
         result_terms = [term for term, score in textrank_ret]

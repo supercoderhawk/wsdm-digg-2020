@@ -11,6 +11,9 @@ class KeywordSearch(object):
                     'keywords': 1}
     es_special_char_regex = re.compile(r'(?P<PUNC>[+-=&|!(){}\[\]^"~*?:/])')
     cites_person_name_regex = re.compile(r'(?:(?:[A-Z][a-z]{1,20} ?){1,3}(?:, )?){1,5}et al')
+    default_result = ['55a38fe7c91b587b095b0d1c',
+                      '55a4eb3e65ceb7cb02dbff7c',
+                      '55a3a74065ce5cd7b3b2db98']
 
     def __init__(self):
         self.extractor = KeywordExtractor()
@@ -19,6 +22,8 @@ class KeywordSearch(object):
         self.headers = {"Content-Type": "application/json"}
 
     def search(self, text, cites_text, top_n):
+        if not text:
+            raise ValueError('input search text is empty')
         doc = self.nlp(text)
         noun_chunks = self.extractor.get_noun_chunk(cites_text)
         noun_chunks = self.format_terms(noun_chunks)
@@ -29,11 +34,22 @@ class KeywordSearch(object):
         if not query_terms:
             query_terms = self.extractor.get_query_words(text)
             query_terms = self.format_terms(query_terms)
-        textrank_keywords = self.format_terms(self.extractor.textrank(doc, 15))
-        query_terms = query_terms + textrank_keywords
-        # important_keywords = self.format_terms(self.extractor.get_query_words(text))
-        # query_terms = query_terms + important_keywords
+        keywords = self.extractor.textrank(doc, 10,
+                                           window_size=2,
+                                           edge_weighting='coor_freq')
+        keywords = self.format_terms(keywords)
+        cites_keywords = self.extractor.textrank(cites_text, 10, window_size=2,
+                                                 edge_weighting='binary')
+        cites_keywords = self.format_terms(cites_keywords)
+        query_terms = query_terms + keywords + cites_keywords
 
+        important_keywords = self.format_terms(self.extractor.get_query_words(text))
+        query_terms = query_terms + important_keywords
+
+        query_terms = [term for term in query_terms if term.strip()]
+
+        if not query_terms:
+            query_terms = self.format_terms([text])
         query_dict = {'title': query_terms,
                       'abstract': query_terms}
         es_query_obj = self.build_es_query_string_object(query_dict, top_n)
@@ -42,6 +58,10 @@ class KeywordSearch(object):
         if ret.status_code == 200:
             for doc in ret.json()['hits']['hits']:
                 searched_paper_id.append(doc['_id'])
+            # When query text is unusual , the searched paper id will be less than three
+            # then replace it with result in sample.csv to avoid submit error
+            if len(searched_paper_id) < 3:
+                searched_paper_id = self.default_result
         else:
             print('search error', ret.text)
         return {'docs': searched_paper_id, 'keywords': query_terms}
@@ -49,7 +69,6 @@ class KeywordSearch(object):
     def build_es_query_string_object(self, query_dict, rows):
         query_segments = []
         for field, terms in query_dict.items():
-            terms = [term for term in terms if term.strip()]
             segment = '{}:({})^{}'.format(field, ' OR '.join(terms), self.field_weight[field])
             query_segments.append(segment)
         query_str = ' OR '.join(query_segments)

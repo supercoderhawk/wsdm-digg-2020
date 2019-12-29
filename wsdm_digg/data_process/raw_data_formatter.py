@@ -66,12 +66,14 @@ class RawDataFormatter(object):
 
     def extract_cites_sent(self, text):
         doc = self.nlp(text)
-        id_str = '[[**##**]]'
-        sent_text = ''
+        id_str = '[**##**]'
+        cite_text = ''
         for sent in doc.sents:
-            if id_str in sent.text:
-                sent_text += ' ' + sent.text
-        return sent_text if sent_text else text
+            sent_text = sent.text
+            if id_str in sent_text:
+                cite_text += ' ' + sent_text
+        cite_text = cite_text.strip()
+        return cite_text if cite_text else text
 
 
 if __name__ == '__main__':

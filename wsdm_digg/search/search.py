@@ -18,13 +18,12 @@ class KeywordSearch(object):
         self.search_url = ES_API_URL + '/_search'
         self.headers = {"Content-Type": "application/json"}
 
-    def search(self, text, top_n):
+    def search(self, text, cites_text, top_n):
         doc = self.nlp(text)
-        sent = self.get_cites_sent(doc)
-        noun_chunks = self.extractor.get_noun_chunk(sent)
+        noun_chunks = self.extractor.get_noun_chunk(cites_text)
         noun_chunks = self.format_terms(noun_chunks)
         noun_chunks = ['"' + noun + '"' for noun in noun_chunks]
-        query_words = self.extractor.get_query_words(sent)
+        query_words = self.extractor.get_query_words(cites_text)
         query_words = self.format_terms(query_words)
         query_terms = noun_chunks + query_words
         if not query_terms:
@@ -46,14 +45,6 @@ class KeywordSearch(object):
         else:
             print('search error', ret.text)
         return {'docs': searched_paper_id, 'keywords': query_terms}
-
-    def get_cites_sent(self, doc):
-        id_str = '[[**##**]]'
-        sent_text = ''
-        for sent in doc.sents:
-            if id_str in sent.text:
-                sent_text += ' ' + sent.text
-        return sent_text if sent_text else doc.text
 
     def build_es_query_string_object(self, query_dict, rows):
         query_segments = []

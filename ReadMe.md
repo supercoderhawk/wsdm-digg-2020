@@ -3,7 +3,7 @@
 ## Prerequirements
 Python >= 3.6
 
-## Usage
+## Reproduce the result
 ### Install Requirements
 
 ```bash
@@ -18,12 +18,35 @@ python3 -m spacy download en
 2. setting value `ES_BASE_URL` in constants.py with your  configured elastic search endpoint.
 
 ### Prepare Data
-1. unzip data files to `data/` folder
-2. execute `scripts/prepare_data.sh`
+1. unzip file and put all files under `data/` folder
+2. execute `bash scripts/prepare_data.sh` in **project root folder** to build the data for next step
 
-### Execute the code
-1. elasticsearch
+### Execute the retrieval process
 
-2. prepare rerank data from elastic search result
+execute `bash scripts/run_retrieval.sh` in **project root folder**
 
-3. 
+#### details
+the above script includes three main parts
+
+1. execute elasticsearch to retrieval candidate papers
+
+2. prepare rerank data from elastic search result (baseline result)
+
+3. execute the rerank by BERT
+
+### others
+
+
+## basic architecture  
+
+1. recall phase:
+
+    noun chunk extraction + textrank keyword extraction + BM25 based search (elasticsearch) 
+
+2. rerank phase:
+    
+    Bert based rerank (SciBert from AllenNLP)
+    
+## train the model
+
+The model required to be trained in this project including the

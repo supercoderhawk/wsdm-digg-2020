@@ -39,13 +39,13 @@ the above script includes three main parts
 
 ## basic architecture  
 
-1. recall phase:
+1. recall phase
 
     noun chunk extraction + textrank keyword extraction + BM25 based search (elasticsearch) 
 
-2. rerank phase:
+2. rerank phase
     
-    Bert based rerank (SciBert from AllenNLP)
+    Bert based rerank (SciBert from AllenAI)
     
 ## train the model
 

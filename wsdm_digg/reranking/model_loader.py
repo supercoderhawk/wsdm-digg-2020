@@ -1,0 +1,43 @@
+# -*- coding: UTF-8 -*-
+from wsdm_digg.reranking.plm_rerank import PlmRerank
+from wsdm_digg.reranking.plm_knrm import PlmKnrm
+from wsdm_digg.reranking.plm_conv_knrm import PlmConvKnrm
+
+_MODEL_NAME_SET = {'plm', 'knrm', 'conv-knrm'}
+
+
+def load_model(args):
+    model_name = args.rerank_model_name
+    if model_name not in _MODEL_NAME_SET:
+        raise ValueError('model name {} is not implemented'.format(model_name))
+    if model_name == 'plm':
+        model = PlmRerank(args)
+    elif model_name == 'knrm':
+        model = PlmKnrm(args)
+    elif model_name == 'conv-knrm':
+        model = PlmConvKnrm(args)
+    return model
+
+
+def get_score_func(model, prefix=None):
+    def calculate(batch):
+        if prefix:
+            token_field = '{}_token'.format(prefix)
+            segment_field = '{}_segment'.format(prefix)
+            mask_field = '{}_mask'.format(prefix)
+            query_lens_field = '{}_query_lens'.format(prefix)
+            doc_lens_field = '{}_doc_lens'.format(prefix)
+        else:
+            token_field = 'token'
+            segment_field = 'segment'
+            mask_field = 'mask'
+            query_lens_field = 'query_lens'
+            doc_lens_field = 'doc_lens'
+        scores = model(token_ids=batch[token_field],
+                       segment_ids=batch[segment_field],
+                       token_mask=batch[mask_field],
+                       query_lens=batch[query_lens_field],
+                       doc_lens=batch[doc_lens_field])
+        return scores
+
+    return calculate

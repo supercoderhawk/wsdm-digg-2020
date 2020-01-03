@@ -1,6 +1,7 @@
 # -*- coding: UTF-8 -*-
 import os
 import random
+import argparse
 from multiprocessing import Pool
 from pysenal import read_jsonline_lazy, get_chunk, append_jsonlines, index, read_lines
 from wsdm_digg.elasticsearch.data import get_paper
@@ -8,15 +9,31 @@ from wsdm_digg.constants import DATA_DIR, RESULT_DIR
 
 
 class RerankDataBuilder(object):
-    def __init__(self, search_filename, golden_filename, dest_filename):
-        self.search_filename = search_filename
-        self.golden_filename = golden_filename
-        self.dest_filename = dest_filename
+    def __init__(self):
+        self.args = self.parse_args()
+        self.search_filename = self.args.search_filename
+        self.golden_filename = self.args.golden_filename
+        self.dest_filename = self.args.dest_filename
         if os.path.exists(self.dest_filename):
             os.remove(self.dest_filename)
         self.candidate_paper_id_list = read_lines(DATA_DIR + 'candidate_paper_id.txt')
 
-    def build_data(self, select_strategy='random'):
+    def parse_args(self):
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-search_filename', type=str, required=True)
+        parser.add_argument('-golden_filename', type=str, required=True)
+        parser.add_argument('-dest_filename', type=str, required=True)
+        parser.add_argument('-select_strategy', type=str,
+                            choices=['random', 'search_result_offset', 'search_result_false_top'],
+                            required=True)
+        parser.add_argument('-offset', type=int, default=50)
+        args = parser.parse_args()
+        return args
+
+    def run(self):
+        self.build_data()
+
+    def build_data(self):
         pool = Pool(10)
 
         desc_id2item = {}
@@ -33,7 +50,7 @@ class RerankDataBuilder(object):
                 cites_text = desc_id2item[item['description_id']]['cites_text']
                 train_pair = self.select_train_pair(item['docs'],
                                                     true_paper_id,
-                                                    select_strategy)
+                                                    self.args.select_strategy)
                 item.pop('docs')
                 item.pop('keywords')
                 new_item_chunk.append({**train_pair, **item, 'cites_text': cites_text})
@@ -41,23 +58,40 @@ class RerankDataBuilder(object):
             append_jsonlines(self.dest_filename, built_items)
 
     def select_train_pair(self, doc_list, true_doc_id, select_strategy):
-        offset = 50
-        if select_strategy == 'search_result':
+        offset = self.args.offset
+        if select_strategy == 'search_result_offset':
             true_idx = index(doc_list, true_doc_id, -1)
             if true_idx == -1 or true_idx + offset >= len(doc_list):
-                false_paper_id = doc_list[-1]
+                if len(doc_list) <= offset:
+                    # when doc_list count is fewer than offset, used random selected false id
+                    # because the result caused by following reasons will drop training result
+                    # 1. the unusual description text will return 3 predefined paper id (in search.py)
+                    # 2. too small topk in benchmark, and last instance of this result list has similar context of  true paper, will confused model
+                    false_paper_id = self.random_choose_false_id(true_doc_id)
+                else:
+                    false_paper_id = doc_list[-1]
             else:
                 false_paper_id = doc_list[true_idx + offset]
         elif select_strategy == 'random':
-            false_paper_id = random.choice(self.candidate_paper_id_list)
-            if false_paper_id == true_doc_id:
-                while True:
-                    false_paper_id = random.choice(self.candidate_paper_id_list)
-                    if false_paper_id != true_doc_id:
-                        break
+            false_paper_id = self.random_choose_false_id(true_doc_id)
+        elif select_strategy == 'search_result_false_top':
+            true_idx = index(doc_list, true_doc_id, -1)
+            if true_idx == 0:
+                false_paper_id = doc_list[1]
+            else:
+                false_paper_id = doc_list[0]
         else:
             raise ValueError('false instance select strategy error')
         return {'true_paper_id': true_doc_id, 'false_paper_id': false_paper_id}
+
+    def random_choose_false_id(self, true_doc_id):
+        false_paper_id = random.choice(self.candidate_paper_id_list)
+        if false_paper_id == true_doc_id:
+            while True:
+                false_paper_id = random.choice(self.candidate_paper_id_list)
+                if false_paper_id != true_doc_id:
+                    break
+        return false_paper_id
 
     def build_single_query(self, item):
         query = item['cites_text']
@@ -74,11 +108,4 @@ class RerankDataBuilder(object):
 
 
 if __name__ == '__main__':
-    golden_filename = DATA_DIR + 'train.jsonl'
-    # golden_filename = DATA_DIR + 'test.jsonl'
-    search_filename = RESULT_DIR + 'cite_textrank_top10_train.jsonl'
-    # search_filename = DATA_DIR + 'baseline_demo.jsonl'
-    # dest_filename = DATA_DIR + 'train_rerank.jsonl'
-    dest_filename = DATA_DIR + 'cite_textrank_top10_rerank_random.jsonl'
-    builder = RerankDataBuilder(search_filename, golden_filename, dest_filename)
-    builder.build_data(select_strategy='random')
+    RerankDataBuilder().run()

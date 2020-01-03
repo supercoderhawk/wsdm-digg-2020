@@ -1,5 +1,6 @@
 # -*- coding: UTF-8 -*-
 import torch
+from itertools import chain
 from torch.multiprocessing import Queue, Process
 import numpy as np
 from pysenal import get_chunk, read_jsonline_lazy
@@ -15,6 +16,7 @@ class RerankDataLoader(object):
         self.batch_size = args.batch_size
         self.max_len = args.max_len
         self.mode = mode
+        self.args = args
 
     def __iter__(self):
         return iter(RerankDataIterator(self))
@@ -24,6 +26,7 @@ class RerankDataIterator(object):
     def __init__(self, loader):
         self.loader = loader
         self.data_source = loader.data_source
+        self.args = loader.args
         self.num_workers = 8
         self.batch_size = loader.batch_size
         self.tokenizer = loader.tokenizer
@@ -59,19 +62,21 @@ class RerankDataIterator(object):
             searched_ids = self.data_source['searched_id_list']
 
             def build_batch(search_item):
-                raw_batch = []
+                qd_pairs = []
                 desc_id = search_item['description_id']
                 if desc_id in searched_ids:
-                    return []
+                    return [[]]
 
                 query_text = desc_id2item[desc_id]['cites_text']
                 for doc_id in search_item['docs'][:topk]:
                     raw_item = {'description_id': desc_id,
                                 'query': query_text, 'doc_id': doc_id}
-                    raw_batch.append(raw_item)
-                return raw_batch
+                    qd_pairs.append(raw_item)
+
+                return get_chunk(qd_pairs, self.batch_size)
 
             data = map(build_batch, read_jsonline_lazy(search_filename))
+            data = chain.from_iterable(data)
         else:
             raise ValueError('data type error')
         return data
@@ -134,15 +139,22 @@ class RerankDataIterator(object):
             self.output_queue.put(batch)
 
     def encode_text(self, raw_batch, query_field, doc_field, prefix):
-        query_max_len = 100
-        doc_max_len = self.max_len - 2 - query_max_len
+        special_token_count = self.args.special_token_count
+        query_max_len = self.args.query_max_len
+        doc_max_len = self.max_len - special_token_count - query_max_len
         pad_id = self.tokenizer.pad_token_id
         cls_id = self.tokenizer.cls_token_id
         sep_id = self.tokenizer.sep_token_id
         token_ids_list = []
         segment_ids_list = []
         mask_ids_list = []
+        query_len_list = []
+        doc_len_list = []
+        desc_id_set = set()
+
         for item in raw_batch:
+            desc_id = item['description_id']
+            desc_id_set.add(desc_id)
             query_str = item[query_field]
             query_ids = self.tokenizer.encode(query_str,
                                               max_length=query_max_len,
@@ -158,7 +170,12 @@ class RerankDataIterator(object):
 
             query_ids = query_ids[:query_max_len]
             doc_ids = doc_ids[:doc_max_len]
-            token_ids = [cls_id] + query_ids + [sep_id] + doc_ids + [sep_id]
+            query_len_list.append(len(query_ids))
+            doc_len_list.append(len(doc_ids))
+            if special_token_count == 3:
+                token_ids = [cls_id] + query_ids + [sep_id] + doc_ids + [sep_id]
+            else:
+                token_ids = [cls_id] + query_ids + [sep_id] + doc_ids
             token_ids = token_ids[:self.max_len]
             sent_len = len(token_ids)
             token_ids = token_ids + [pad_id] * (self.max_len - len(token_ids))
@@ -173,17 +190,30 @@ class RerankDataIterator(object):
         token_np = np.array(token_ids_list)
         segment_np = np.array(segment_ids_list)
         mask_np = np.array(mask_ids_list)
+        query_len_np = np.array(query_len_list)
+        doc_len_np = np.array(doc_len_list)
+
+        if self.mode in {'eval', 'inference'}:
+            assert len(desc_id_set) == 1
+
         if prefix:
             token_field = '{}_token'.format(prefix)
             segment_field = '{}_segment'.format(prefix)
             mask_field = '{}_mask'.format(prefix)
+            query_len_field = '{}_query_lens'.format(prefix)
+            doc_len_field = '{}_doc_lens'.format(prefix)
         else:
             token_field = 'token'
             segment_field = 'segment'
             mask_field = 'mask'
+            query_len_field = 'query_lens'
+            doc_len_field = 'doc_lens'
+
         batch = {token_field: token_np,
                  segment_field: segment_np,
-                 mask_field: mask_np}
+                 mask_field: mask_np,
+                 query_len_field: query_len_np,
+                 doc_len_field: doc_len_np}
         if self.mode in {'inference', 'eval'}:
             batch['raw'] = raw_batch
         return batch

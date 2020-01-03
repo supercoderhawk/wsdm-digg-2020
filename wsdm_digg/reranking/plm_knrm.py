@@ -25,8 +25,15 @@ class PlmKnrm(nn.Module):
         self.query_max_len = self.args.query_max_len
         self.doc_max_len = self.args.max_len - self.query_max_len - self.args.special_token_count
         self.use_context_vector = self.args.use_context_vector
+        self.context_merge_method = self.args.context_merge_method
         if self.use_context_vector:
-            self.score_dim = len(self.mean_list) + self.args.dim_size
+            if self.context_merge_method == 'vector_concat':
+                self.score_dim = len(self.mean_list) + self.args.dim_size
+            elif self.context_merge_method == 'score_add':
+                self.score_dim = len(self.mean_list)
+                self.context_score_proj = nn.Linear(self.args.dim_size, 1, bias=True)
+            else:
+                raise ValueError('error...')
         else:
             self.score_dim = len(self.mean_list)
         self.score_proj = nn.Linear(self.score_dim, 1, bias=True)
@@ -41,8 +48,8 @@ class PlmKnrm(nn.Module):
         doc_embed = contextualized_embed[:, doc_start_idx:doc_end_idx]
 
         sim_matrix = self.get_similarity_matrix(query_embed, doc_embed, query_lens, doc_lens)
-        rbf_feature = self.get_kernel_pooling(sim_matrix, contextualized_embed[:, 0])
-        score = self.get_ranking_score(rbf_feature)
+        rbf_feature = self.get_kernel_pooling(sim_matrix)
+        score = self.get_ranking_score(rbf_feature, contextualized_embed[:, 0])
         return score
 
     def get_similarity_matrix(self, query_embed, doc_embed, query_lens, doc_lens):
@@ -68,7 +75,7 @@ class PlmKnrm(nn.Module):
         sim_matrix.masked_fill_(total_mask, 0.0)
         return sim_matrix
 
-    def get_kernel_pooling(self, similarity_matrix, context_vector):
+    def get_kernel_pooling(self, similarity_matrix):
         rbf_feature = None
         for mean, stddev in zip(self.mean_list, self.stddev_list):
             rbf_matrix = torch.exp(-(similarity_matrix - mean) ** 2 / (2 * stddev ** 2))
@@ -77,12 +84,18 @@ class PlmKnrm(nn.Module):
             else:
                 rbf_feature = torch.cat((rbf_feature, torch.sum(rbf_matrix, dim=2).unsqueeze(1)), dim=1)
         rbf_feature = torch.sum(torch.log(rbf_feature), dim=2)
-        if self.use_context_vector:
-            rbf_feature = torch.cat((rbf_feature, context_vector), dim=1)
-        # print(rbf_feature)
         return rbf_feature
 
-    def get_ranking_score(self, rbf_feature):
-        score = torch.tanh(self.score_proj(rbf_feature))
-        # score = self.score_proj(rbf_feature)
+    def get_ranking_score(self, rbf_feature, context_feature):
+        # score = torch.tanh(self.score_proj(rbf_feature))
+        if self.use_context_vector:
+            if self.context_merge_method == 'vector_concat':
+                rbf_feature = torch.cat((rbf_feature, context_feature), dim=1)
+                score = self.score_proj(rbf_feature)
+            elif self.context_merge_method == 'score_add':
+                score = self.score_proj(rbf_feature) + self.context_score_proj(context_feature)
+            else:
+                raise ValueError('mode error')
+        else:
+            score = self.score_proj(rbf_feature)
         return score

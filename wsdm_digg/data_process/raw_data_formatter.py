@@ -20,6 +20,7 @@ class RawDataFormatter(object):
         self.validation_data_formatter()
 
     def candidate_formatter(self):
+        candidiate_paper_id_list = []
         candidate_filename = self.dirname + 'candidate_paper_for_wsdm2020.csv'
         dest_filename = os.path.splitext(candidate_filename)[0] + '.jsonl'
         if os.path.exists(dest_filename):
@@ -29,7 +30,9 @@ class RawDataFormatter(object):
             item = {'paper_id': row['paper_id'], 'title': row['title'],
                     'abstract': row['abstract'], 'journal': row['journal'],
                     'keywords': row['keywords']}
+            candidiate_paper_id_list.append(row['paper_id'])
             append_jsonline(dest_filename, item)
+        write_lines(self.dirname + 'candidate_paper_id.txt', candidiate_paper_id_list)
 
     def train_data_formatter(self):
         train_filename = self.dirname + 'train_release.csv'
@@ -41,6 +44,8 @@ class RawDataFormatter(object):
         for idx, row in df.iterrows():
             cites_text = self.extract_cites_sent(row['description_text'])
             desc_id = row['description_id']
+            if not row['description_text'].strip():
+                continue
             if desc_id in desc_id_set:
                 continue
             desc_id_set.add(desc_id)

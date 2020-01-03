@@ -10,18 +10,20 @@ class PlmKnrm(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        model_name = self.args.model_name
-        if model_name not in MODEL_DICT:
+        plm_model_name = self.args.plm_model_name
+        if plm_model_name not in MODEL_DICT:
             raise ValueError('model name is not supported.')
-        model_info = MODEL_DICT[model_name]
+        model_info = MODEL_DICT[plm_model_name]
         if 'path' in model_info:
-            model_name = model_info['path']
-        self.model = model_info['model_class'].from_pretrained(model_name)
+            plm_model_name = model_info['path']
+        self.model = model_info['model_class'].from_pretrained(plm_model_name)
         if torch.cuda.is_available():
             self.model.cuda()
         self.mean_list = self.args.mean_list
         self.stddev_list = self.args.stddev_list
         assert len(self.mean_list) == len(self.stddev_list)
+        self.query_max_len = self.args.query_max_len
+        self.doc_max_len = self.args.max_len - self.query_max_len - self.args.special_token_count
         self.use_context_vector = self.args.use_context_vector
         if self.use_context_vector:
             self.score_dim = len(self.mean_list) + self.args.dim_size
@@ -33,9 +35,9 @@ class PlmKnrm(nn.Module):
         contextualized_embed = self.model(input_ids=token_ids,
                                           attention_mask=token_mask,
                                           token_type_ids=segment_ids)[0]
-        query_embed = contextualized_embed[:, 1:self.args.query_max_len]
-        doc_start_idx = self.args.query_max_len + 1
-        doc_end_idx = doc_start_idx + self.args.doc_max_len
+        query_embed = contextualized_embed[:, 1:self.query_max_len + 1]
+        doc_start_idx = self.query_max_len + 1
+        doc_end_idx = doc_start_idx + self.doc_max_len
         doc_embed = contextualized_embed[:, doc_start_idx:doc_end_idx]
 
         sim_matrix = self.get_similarity_matrix(query_embed, doc_embed, query_lens, doc_lens)
@@ -45,18 +47,24 @@ class PlmKnrm(nn.Module):
 
     def get_similarity_matrix(self, query_embed, doc_embed, query_lens, doc_lens):
         batch_size = query_lens.size(0)
-        query_sum = torch.sqrt(torch.sum(query_embed ** 2, dim=2).unsqueeze(1))
-        doc_sum = torch.sqrt(torch.sum(doc_embed ** 2, dim=2).unsqueeze(0))
-        sim_matrix = torch.bmm(query_embed, doc_embed) / torch.bmm(query_sum, doc_sum)
+        query_sum = torch.sqrt(torch.sum(query_embed ** 2, dim=2).unsqueeze(2))
+        doc_sum = torch.sqrt(torch.sum(doc_embed ** 2, dim=2).unsqueeze(1))
+
+        sim_matrix = torch.bmm(query_embed, doc_embed.permute(0, 2, 1)) / torch.bmm(query_sum, doc_sum)
         # mask position with pad char in query and doc to value 0
-        q_max_len = self.args.query_max_len
-        d_max_len = self.args.doc_max_len
-        q_mask = torch.arange(q_max_len).unsqueeze(0).repeat(batch_size, 1) <= query_lens
+        q_max_len = self.query_max_len
+        d_max_len = self.doc_max_len
+        q_range = torch.arange(q_max_len).unsqueeze(0).repeat(batch_size, 1)
+        if torch.cuda.is_available():
+            q_range = q_range.cuda()
+        q_mask = q_range <= query_lens.unsqueeze(1)
         q_mask = q_mask.unsqueeze(2).repeat(1, 1, d_max_len)
-        d_mask = torch.arange(d_max_len).unsqueeze(0).repeat(batch_size, 1) <= doc_lens
+        d_range = torch.arange(d_max_len).unsqueeze(0).repeat(batch_size, 1)
+        if torch.cuda.is_available():
+            d_range = d_range.cuda()
+        d_mask = d_range <= doc_lens.unsqueeze(1)
         d_mask = d_mask.unsqueeze(1).repeat(1, q_max_len, 1)
         total_mask = ~(q_mask * d_mask)
-        # print(total_mask[0])
         sim_matrix.masked_fill_(total_mask, 0.0)
         return sim_matrix
 
@@ -65,14 +73,16 @@ class PlmKnrm(nn.Module):
         for mean, stddev in zip(self.mean_list, self.stddev_list):
             rbf_matrix = torch.exp(-(similarity_matrix - mean) ** 2 / (2 * stddev ** 2))
             if rbf_feature is None:
-                rbf_feature = torch.sum(rbf_matrix, dim=2)
+                rbf_feature = torch.sum(rbf_matrix, dim=2).unsqueeze(1)
             else:
-                torch.cat((rbf_feature, torch.sum(rbf_matrix, dim=2)), dim=1)
-
-        rbf_feature = torch.sum(torch.log(rbf_feature), dim=1)
+                rbf_feature = torch.cat((rbf_feature, torch.sum(rbf_matrix, dim=2).unsqueeze(1)), dim=1)
+        rbf_feature = torch.sum(torch.log(rbf_feature), dim=2)
         if self.use_context_vector:
             rbf_feature = torch.cat((rbf_feature, context_vector), dim=1)
+        # print(rbf_feature)
         return rbf_feature
 
     def get_ranking_score(self, rbf_feature):
-        return torch.tanh(self.score_proj(rbf_feature))
+        score = torch.tanh(self.score_proj(rbf_feature))
+        # score = self.score_proj(rbf_feature)
+        return score

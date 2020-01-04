@@ -169,8 +169,13 @@ class RerankDataIterator(object):
                                             add_special_tokens=False)
 
             query_ids = query_ids[:query_max_len]
-            doc_ids = doc_ids[:doc_max_len]
             query_len_list.append(len(query_ids))
+
+            if self.args.rerank_model_name != 'plm':
+                query_pad_len = query_max_len - len(query_ids)
+                query_ids.extend([pad_id] * query_pad_len)
+            doc_ids = doc_ids[:doc_max_len]
+
             doc_len_list.append(len(doc_ids))
             if special_token_count == 3:
                 token_ids = [cls_id] + query_ids + [sep_id] + doc_ids + [sep_id]

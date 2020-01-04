@@ -42,13 +42,18 @@ class PlmTrainer(object):
     def train_func(self):
         step = 0
         bert_lr = 1e-5
+        rerank_lr = 1e-3
         model = load_model(self.args)
         true_score_func = get_score_func(model, 'true')
-        false_score_func = get_score_func(model, 'true')
+        false_score_func = get_score_func(model, 'false')
         if torch.cuda.is_available():
             model.cuda()
         loss_fct = MarginRankingLoss(margin=1, reduction='mean')
-        optimizer = AdamW(model.parameters(), lr=bert_lr)
+
+        params = [(k, v) for k, v in model.named_parameters() if v.requires_grad]
+        non_bert_params = {'params': [v for k, v in params if not k.startswith('plm_model.')]}
+        bert_params = {'params': [v for k, v in params if k.startswith('plm_model.')], 'lr': bert_lr}
+        optimizer = AdamW([non_bert_params, bert_params], lr=rerank_lr)
         for epoch in range(1, self.args.epoch + 1):
             for batch in self.train_loader:
                 model.train()
@@ -67,7 +72,7 @@ class PlmTrainer(object):
                 # if self.args.max_grad:
                 torch.nn.utils.clip_grad_value_(model.parameters(), 0.01)
                 # if self.args.grad_norm:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 2)
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), 2)
 
                 optimizer.step()
                 step += 1
@@ -97,7 +102,7 @@ class PlmTrainer(object):
         parser.add_argument("-max_len", type=int, default=512, help='')
         parser.add_argument("-dim_size", type=int, default=768, help='')
         parser.add_argument("-query_max_len", type=int, default=100, help='')
-        parser.add_argument("-special_token_count", type=int, default=3, choices=[2, 3], help='')
+        parser.add_argument("-special_token_count", type=int, default=2, choices=[2, 3], help='')
         parser.add_argument("-use_context_vector", action='store_true', help='')
         parser.add_argument("-context_merge_method", type=str,
                             choices=['vector_concat', 'score_add'], help='')

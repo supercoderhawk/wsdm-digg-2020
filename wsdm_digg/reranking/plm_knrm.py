@@ -4,6 +4,36 @@ import torch.nn as nn
 from wsdm_digg.constants import MODEL_DICT
 
 
+class RbfKernelList(nn.Module):
+    def __init__(self, initial_mean_list, initial_stddev_list):
+        super().__init__()
+        self.kernel_list = nn.ModuleList()
+        self.kernel_count = len(initial_mean_list)
+        for initial_mean, initial_stddev in zip(initial_mean_list, initial_stddev_list):
+            kernel = RbfKernel(initial_mean, initial_stddev)
+            self.kernel_list.append(kernel)
+
+    def forward(self, similarity_matrix, query_mask):
+        stacked_rbf_feature = torch.stack([k(similarity_matrix) for k in self.kernel_list], dim=1)
+        mask = query_mask.unsqueeze(1).repeat(1, self.kernel_count, 1)
+        stacked_rbf_feature.masked_fill_(mask, 0.0)
+        # add 1e-10 to avoid -Inf result, cause NaN gradient
+        rbf_feature = torch.log(stacked_rbf_feature + 1e-10).sum(-1)
+        return rbf_feature
+
+
+class RbfKernel(nn.Module):
+    def __init__(self, initial_mean, initial_stddev):
+        super().__init__()
+        self.mean = nn.Parameter(torch.tensor(initial_mean), requires_grad=True)
+        self.stddev = nn.Parameter(torch.tensor(initial_stddev), requires_grad=True)
+
+    def forward(self, similarity_matrix):
+        rbf_value = torch.exp(-0.5 * (similarity_matrix - self.mean) ** 2 / self.stddev ** 2)
+        rbf_feature = rbf_value.sum(-1)
+        return rbf_feature
+
+
 class PlmKnrm(nn.Module):
     model_name = 'knrm'
 
@@ -16,12 +46,14 @@ class PlmKnrm(nn.Module):
         model_info = MODEL_DICT[plm_model_name]
         if 'path' in model_info:
             plm_model_name = model_info['path']
-        self.model = model_info['model_class'].from_pretrained(plm_model_name)
+        self.plm_model = model_info['model_class'].from_pretrained(plm_model_name)
         if torch.cuda.is_available():
-            self.model.cuda()
+            self.plm_model.cuda()
+
         self.mean_list = self.args.mean_list
         self.stddev_list = self.args.stddev_list
         assert len(self.mean_list) == len(self.stddev_list)
+        self.kernel = RbfKernelList(self.mean_list, self.stddev_list)
         self.query_max_len = self.args.query_max_len
         self.doc_max_len = self.args.max_len - self.query_max_len - self.args.special_token_count
         self.use_context_vector = self.args.use_context_vector
@@ -39,52 +71,31 @@ class PlmKnrm(nn.Module):
         self.score_proj = nn.Linear(self.score_dim, 1, bias=True)
 
     def forward(self, token_ids, segment_ids, token_mask, query_lens, doc_lens):
-        contextualized_embed = self.model(input_ids=token_ids,
-                                          attention_mask=token_mask,
-                                          token_type_ids=segment_ids)[0]
+        contextualized_embed = self.plm_model(input_ids=token_ids,
+                                              attention_mask=token_mask,
+                                              token_type_ids=segment_ids)[0]
         query_embed = contextualized_embed[:, 1:self.query_max_len + 1]
-        doc_start_idx = self.query_max_len + 1
+        doc_start_idx = self.query_max_len + 2
         doc_end_idx = doc_start_idx + self.doc_max_len
         doc_embed = contextualized_embed[:, doc_start_idx:doc_end_idx]
 
         sim_matrix = self.get_similarity_matrix(query_embed, doc_embed, query_lens, doc_lens)
-        rbf_feature = self.get_kernel_pooling(sim_matrix)
+        batch_size = query_lens.size(0)
+        q_range = torch.arange(self.query_max_len).unsqueeze(0).repeat(batch_size, 1)
+        if torch.cuda.is_available():
+            q_range = q_range.cuda()
+        q_mask = q_range >= query_lens.unsqueeze(1)
+        rbf_feature = self.kernel(sim_matrix, q_mask)
         score = self.get_ranking_score(rbf_feature, contextualized_embed[:, 0])
         return score
 
     def get_similarity_matrix(self, query_embed, doc_embed, query_lens, doc_lens):
-        batch_size = query_lens.size(0)
         query_sum = torch.sqrt(torch.sum(query_embed ** 2, dim=2).unsqueeze(2))
         doc_sum = torch.sqrt(torch.sum(doc_embed ** 2, dim=2).unsqueeze(1))
 
         sim_matrix = torch.bmm(query_embed, doc_embed.permute(0, 2, 1)) / torch.bmm(query_sum, doc_sum)
-        # mask position with pad char in query and doc to value 0
-        q_max_len = self.query_max_len
-        d_max_len = self.doc_max_len
-        q_range = torch.arange(q_max_len).unsqueeze(0).repeat(batch_size, 1)
-        if torch.cuda.is_available():
-            q_range = q_range.cuda()
-        q_mask = q_range <= query_lens.unsqueeze(1)
-        q_mask = q_mask.unsqueeze(2).repeat(1, 1, d_max_len)
-        d_range = torch.arange(d_max_len).unsqueeze(0).repeat(batch_size, 1)
-        if torch.cuda.is_available():
-            d_range = d_range.cuda()
-        d_mask = d_range <= doc_lens.unsqueeze(1)
-        d_mask = d_mask.unsqueeze(1).repeat(1, q_max_len, 1)
-        total_mask = ~(q_mask * d_mask)
-        sim_matrix.masked_fill_(total_mask, 0.0)
-        return sim_matrix
 
-    def get_kernel_pooling(self, similarity_matrix):
-        rbf_feature = None
-        for mean, stddev in zip(self.mean_list, self.stddev_list):
-            rbf_matrix = torch.exp(-(similarity_matrix - mean) ** 2 / (2 * stddev ** 2))
-            if rbf_feature is None:
-                rbf_feature = torch.sum(rbf_matrix, dim=2).unsqueeze(1)
-            else:
-                rbf_feature = torch.cat((rbf_feature, torch.sum(rbf_matrix, dim=2).unsqueeze(1)), dim=1)
-        rbf_feature = torch.sum(torch.log(rbf_feature), dim=2)
-        return rbf_feature
+        return sim_matrix
 
     def get_ranking_score(self, rbf_feature, context_feature):
         # score = torch.tanh(self.score_proj(rbf_feature))

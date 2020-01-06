@@ -25,8 +25,8 @@ class RbfKernelList(nn.Module):
 class RbfKernel(nn.Module):
     def __init__(self, initial_mean, initial_stddev):
         super().__init__()
-        self.mean = nn.Parameter(torch.tensor(initial_mean), requires_grad=True)
-        self.stddev = nn.Parameter(torch.tensor(initial_stddev), requires_grad=True)
+        self.mean = nn.Parameter(torch.tensor(initial_mean), requires_grad=False)
+        self.stddev = nn.Parameter(torch.tensor(initial_stddev), requires_grad=False)
 
     def forward(self, similarity_matrix):
         rbf_value = torch.exp(-0.5 * (similarity_matrix - self.mean) ** 2 / self.stddev ** 2)
@@ -95,6 +95,23 @@ class PlmKnrm(nn.Module):
 
         sim_matrix = torch.bmm(query_embed, doc_embed.permute(0, 2, 1)) / torch.bmm(query_sum, doc_sum)
 
+        # mask position with pad char in query and doc to value 0
+        batch_size = query_lens.size(0)
+        q_max_len = self.query_max_len
+        d_max_len = self.doc_max_len
+        q_range = torch.arange(q_max_len).unsqueeze(0).repeat(batch_size, 1)
+        if torch.cuda.is_available():
+            q_range = q_range.cuda()
+        q_mask = q_range <= query_lens.unsqueeze(1)
+        q_mask = q_mask.unsqueeze(2).repeat(1, 1, d_max_len)
+        d_range = torch.arange(d_max_len).unsqueeze(0).repeat(batch_size, 1)
+        if torch.cuda.is_available():
+            d_range = d_range.cuda()
+        d_mask = d_range <= doc_lens.unsqueeze(1)
+        d_mask = d_mask.unsqueeze(1).repeat(1, q_max_len, 1)
+        total_mask = ~(q_mask * d_mask)
+        sim_matrix.masked_fill_(total_mask, 0.0)
+
         return sim_matrix
 
     def get_ranking_score(self, rbf_feature, context_feature):
@@ -104,9 +121,13 @@ class PlmKnrm(nn.Module):
                 rbf_feature = torch.cat((rbf_feature, context_feature), dim=1)
                 score = self.score_proj(rbf_feature)
             elif self.context_merge_method == 'score_add':
-                score = self.score_proj(rbf_feature) + self.context_score_proj(context_feature)
+                score = torch.tanh(self.score_proj(rbf_feature)) + self.context_score_proj(context_feature)
             else:
                 raise ValueError('mode error')
+            # score = torch.tan(score)
         else:
             score = self.score_proj(rbf_feature)
+            # print(score)
+            # print(torch.tanh(score))
+            # print(score)
         return score

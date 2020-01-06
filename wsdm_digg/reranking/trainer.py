@@ -1,6 +1,7 @@
 # -*- coding: UTF-8 -*-
 import argparse
 import torch
+import torch.nn as nn
 from torch.nn import MarginRankingLoss
 from torch.utils.tensorboard import SummaryWriter
 from transformers.optimization import AdamW
@@ -8,11 +9,14 @@ from pysenal import get_logger, write_json
 from wsdm_digg.constants import *
 from wsdm_digg.reranking.dataloader import RerankDataLoader
 from wsdm_digg.reranking.model_loader import load_model, get_score_func
+from wsdm_digg.reranking.parse_args import parse_args
+from wsdm_digg.reranking.predict import PlmRerankReranker
+from wsdm_digg.benchmark.evaluator import Evaluator
 
 
 class PlmTrainer(object):
     def __init__(self):
-        self.args = self.parse_args()
+        self.args = parse_args()
         self.plm_model_name = self.args.plm_model_name
         self.rerank_model_name = self.args.rerank_model_name
         self.model_info = MODEL_DICT[self.plm_model_name]
@@ -21,6 +25,9 @@ class PlmTrainer(object):
         else:
             tokenizer_path = self.plm_model_name
         self.tokenizer = self.model_info['tokenizer_class'].from_pretrained(tokenizer_path)
+        dest_dir = self.args.dest_base_dir
+        if not os.path.exists(dest_dir):
+            os.mkdir(dest_dir)
         self.train_loader = RerankDataLoader(self.args.train_filename,
                                              self.tokenizer,
                                              self.args,
@@ -44,8 +51,8 @@ class PlmTrainer(object):
         bert_lr = 1e-5
         rerank_lr = 1e-3
         model = load_model(self.args)
-        true_score_func = get_score_func(model, 'true')
-        false_score_func = get_score_func(model, 'false')
+        true_score_func = get_score_func(model, 'true', inference=False)
+        false_score_func = get_score_func(model, 'false', inference=False)
         if torch.cuda.is_available():
             model.cuda()
         loss_fct = MarginRankingLoss(margin=1, reduction='mean')
@@ -53,66 +60,54 @@ class PlmTrainer(object):
         params = [(k, v) for k, v in model.named_parameters() if v.requires_grad]
         non_bert_params = {'params': [v for k, v in params if not k.startswith('plm_model.')]}
         bert_params = {'params': [v for k, v in params if k.startswith('plm_model.')], 'lr': bert_lr}
+        # optimizer = torch.optim.Adam([bert_params, non_bert_params], lr=rerank_lr)
         optimizer = AdamW([non_bert_params, bert_params], lr=rerank_lr)
+        accumulate_step = 0
+
         for epoch in range(1, self.args.epoch + 1):
             for batch in self.train_loader:
                 model.train()
-                optimizer.zero_grad()
                 true_scores = true_score_func(batch)
                 false_scores = false_score_func(batch)
                 # y all 1s to indicate positive should be higher
                 y = torch.ones(len(true_scores)).float()
                 if torch.cuda.is_available():
                     y = y.cuda()
+
                 loss = loss_fct(true_scores, false_scores, y)
-                # print(loss)
-                self.writer.add_scalar('loss', loss, step)
                 loss.backward()
+                self.writer.add_scalar('loss', loss, step)
+                accumulate_step += 1
 
-                # if self.args.max_grad:
-                torch.nn.utils.clip_grad_value_(model.parameters(), 0.01)
-                # if self.args.grad_norm:
-                # torch.nn.utils.clip_grad_norm_(model.parameters(), 2)
+                # torch.nn.utils.clip_grad_value_(model.parameters(), 0.01)
 
-                optimizer.step()
+                if accumulate_step % self.args.gradient_accumulate_step == 0:
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    accumulate_step = 0
+
                 step += 1
                 if step % self.args.save_model_step == 0:
                     model_basename = self.args.dest_base_dir + self.args.exp_name
                     model_basename += '_epoch_{}_step_{}'.format(epoch, step)
                     torch.save(model.state_dict(), model_basename + '.model')
                     write_json(model_basename + '.json', vars(self.args))
+                    map_top3 = self.evaluate(model, 5, model_basename)
+                    self.writer.add_scalar('map@3', map_top3, step)
+                    self.logger.info('step {} map@3 {:.4f}'.format(step, map_top3))
 
-    def parse_args(self, args=None):
-        parser = argparse.ArgumentParser()
-        parser.add_argument("-exp_name", required=True, type=str, help='')
-        parser.add_argument("-train_filename", required=True, type=str, help='')
-        parser.add_argument("-test_filename", required=True, type=str, help='')
-        parser.add_argument("-dest_base_dir", required=True, type=str, help='')
-        parser.add_argument("-batch_size", type=int, default=4, help='')
-
-        parser.add_argument("-epoch", type=int, default=10, help='')
-        parser.add_argument("-plm_learning_rate", type=float, default=1e-5, help='')
-        parser.add_argument("-ranker_learning_rate", type=float, default=1e-3, help='')
-        parser.add_argument("-save_model_step", type=int, default=2000, help='')
-
-        # model parameter
-        parser.add_argument("-plm_model_name", required=True, type=str, help='')
-        parser.add_argument("-rerank_model_name", required=True, type=str,
-                            choices=['plm', 'knrm', 'conv-knrm'], help='')
-        parser.add_argument("-max_len", type=int, default=512, help='')
-        parser.add_argument("-dim_size", type=int, default=768, help='')
-        parser.add_argument("-query_max_len", type=int, default=100, help='')
-        parser.add_argument("-special_token_count", type=int, default=2, choices=[2, 3], help='')
-        parser.add_argument("-use_context_vector", action='store_true', help='')
-        parser.add_argument("-context_merge_method", type=str,
-                            choices=['vector_concat', 'score_add'], help='')
-        parser.add_argument("-mean_list", type=float, metavar='N', nargs='+', help='')
-        parser.add_argument("-stddev_list", type=float, metavar='N', nargs='+', help='')
-        parser.add_argument("-window_size_list", type=int, metavar='N', nargs='+', help='')
-        parser.add_argument("-filter_size", type=int, default=128, help='')
-
-        args = parser.parse_args(args)
-        return args
+    def evaluate(self, model, batch_size, mode_basename):
+        model_info = {'model': model, 'config': self.args, 'tokenizer': self.tokenizer}
+        dest_filename = mode_basename + '_pred_test.jsonl'
+        reranker = PlmRerankReranker(model_info, batch_size)
+        torch.cuda.empty_cache()
+        reranker.rerank_file(search_filename=RESULT_DIR + 'cite_textrank_top15.jsonl',
+                             golden_filename=self.args.test_filename,
+                             dest_filename=dest_filename,
+                             topk=10, is_submit=False)
+        torch.cuda.empty_cache()
+        map_val = Evaluator().evaluation_map(dest_filename)
+        return map_val
 
 
 if __name__ == '__main__':

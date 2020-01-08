@@ -6,8 +6,9 @@ from ..constants import ES_API_URL
 
 
 class KeywordSearch(object):
-    field_weight = {'title': 4,
-                    'abstract': 6,
+    field_weight = {'title': 2,
+                    'abstract': 3,
+                    'TA': 10,
                     'keywords': 1}
     es_special_char_regex = re.compile(r'(?P<PUNC>[+-=&|!(){}\[\]^"~*?:/])')
     cites_person_name_regex = re.compile(r'(?:(?:[A-Z][a-z]{1,20} ?){1,3}(?:, )?){1,5}et al')
@@ -24,7 +25,7 @@ class KeywordSearch(object):
     def search(self, text, cites_text, top_n, paper_keywords=None):
         if not text:
             raise ValueError('input search text is empty')
-        # doc = self.nlp(text)
+
         noun_chunks = self.extractor.get_noun_chunk(cites_text)
         noun_chunks = self.format_terms(noun_chunks)
         noun_chunks = ['"' + noun + '"' for noun in noun_chunks]
@@ -34,9 +35,7 @@ class KeywordSearch(object):
         if not query_terms:
             query_terms = self.extractor.get_query_words(text)
             query_terms = self.format_terms(query_terms)
-        # keywords = self.extractor.textrank(doc, 10,
-        #                                    window_size=2,
-        #                                    edge_weighting='binary')
+
         cites_keywords = self.extractor.textrank(cites_text, 15, window_size=2,
                                                  edge_weighting='binary')
 
@@ -44,14 +43,16 @@ class KeywordSearch(object):
 
         important_keywords = self.format_terms(self.extractor.get_query_words(text))
         query_terms = query_terms + important_keywords
-        # print(noun_chunks)
+
         query_terms = [term for term in query_terms if term.strip()]
         if not query_terms:
             query_terms = self.format_terms([text])
         # paper_keywords = self.format_terms(paper_keywords)
         # paper_keywords = ['"' + k + '"' if ' ' in k else k for k in paper_keywords]
-        query_dict = {'title': query_terms,
-                      'abstract': query_terms}
+        query_dict = {
+            # 'title': query_terms,
+            #               'abstract': query_terms,
+            'TA': query_terms}
         es_query_obj = self.build_es_query_string_object(query_dict, top_n)
         ret = requests.post(self.search_url, json=es_query_obj, headers=self.headers)
         searched_paper_id = []

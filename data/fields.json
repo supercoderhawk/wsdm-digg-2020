@@ -17,6 +17,10 @@
     "keywords": {
       "type": "text",
       "analyzer": "english_analyzer"
+    },
+    "TA": {
+      "type": "text",
+      "analyzer": "english_analyzer"
     }
   }
 }

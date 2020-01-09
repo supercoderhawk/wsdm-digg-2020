@@ -38,7 +38,6 @@ class KeywordSearch(object):
 
         cites_keywords = self.extractor.textrank(cites_text, 15, window_size=2,
                                                  edge_weighting='binary')
-
         query_terms = query_terms + cites_keywords
 
         important_keywords = self.format_terms(self.extractor.get_query_words(text))
@@ -49,10 +48,7 @@ class KeywordSearch(object):
             query_terms = self.format_terms([text])
         # paper_keywords = self.format_terms(paper_keywords)
         # paper_keywords = ['"' + k + '"' if ' ' in k else k for k in paper_keywords]
-        query_dict = {
-            # 'title': query_terms,
-            #               'abstract': query_terms,
-            'TA': query_terms}
+        query_dict = {'TA': query_terms}
         es_query_obj = self.build_es_query_string_object(query_dict, top_n)
         ret = requests.post(self.search_url, json=es_query_obj, headers=self.headers)
         searched_paper_id = []

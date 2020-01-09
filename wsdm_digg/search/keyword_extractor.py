@@ -9,6 +9,7 @@ class KeywordExtractor(object):
     chunk_nlp = spacy.load('en', disable=['ner', 'textcat'])
     noun_chunk_stopwords = ('their ', 'the ', 'our ', 'my ', 'a ', 'an ', 'many ')
     es_special_char_regex = re.compile(r'(?P<PUNC>[+-=&|!(){}\[\]^"~*?:/])')
+
     def __init__(self):
         self.nlp.add_pipe(self.nlp.create_pipe('sentencizer'))
 
@@ -36,7 +37,7 @@ class KeywordExtractor(object):
     def get_noun_chunk(self, text):
         noun_chunk_list = []
         for noun_chunk in self.chunk_nlp(text).noun_chunks:
-            noun_chunk_list.append(noun_chunk.lemma_)
+            noun_chunk_list.append(noun_chunk.text)
         noun_chunk_list = self.noun_chunk_post_process(noun_chunk_list)
         return noun_chunk_list
 
@@ -59,9 +60,9 @@ class KeywordExtractor(object):
             if not token.is_stop and not token.is_punct:
                 if pos:
                     if token.pos_ in pos_rules:
-                        query_words.append(token.lemma_)
+                        query_words.append(token.text)
                 else:
-                    query_words.append(token.lemma_)
+                    query_words.append(token.text)
         return self.term_dedupe(query_words)
 
     def term_dedupe(self, terms):

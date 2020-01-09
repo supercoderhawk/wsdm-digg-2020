@@ -1,13 +1,22 @@
 #!/bin/bash
 
-# build data
 DATA_DIR=${PWD}/data
-SEARCH_FILENAME=$DATA_DIR/result/cite_textrank_top15_train.jsonl
-GOLDEN_FILENAME=$DATA_DIR/train.jsonl
-#DEST_FILENAME=$DATA_DIR/cite_textrank_top10_rerank_search_result_offset_10.jsonl
-DEST_FILENAME=$DATA_DIR/cite_textrank_top15_rerank_search_result.jsonl
+RESULT_DIR=$DATA_DIR/submit_result
+VALID_FILE=$DATA_DIR/validation.jsonl
+MODEL_BASEDIR=$DATA_DIR/rerank
 
-python wsdm_digg/data_process/rerank_data_builder.py -search_filename $SEARCH_FILENAME \
-  -golden_filename $GOLDEN_FILENAME -dest_filename $DEST_FILENAME \
-  -select_strategy 'search_result_offset'
+EPOCH=5
+STEP=60000
+TOPK=20
+MODEL_BASENAME=only_TA_shuffle
+RERANK_NAME='plm'
 
+MODEL_DIR=$MODEL_BASEDIR/${MODEL_BASENAME}_$RERANK_NAME
+
+export CUDA_VISIBLE_DEVICES=1
+
+python3 wsdm_digg/reranking/predict.py -eval_search_filename $RESULT_DIR/only_TA.jsonl \
+  -golden_filename $VALID_FILE \
+  -dest_filename $RESULT_DIR/${MODEL_BASENAME}_step_${STEP}_top${TOPK}.jsonl \
+  -model_path $MODEL_DIR/${MODEL_BASENAME}_epoch_${EPOCH}_step_$STEP.model \
+  -eval_batch_size 10

@@ -149,3 +149,6 @@ gen
 !data/fields.json
 !data/setting.json
 /runners
+Pipfile
+Pipfile.lock
+.vscode

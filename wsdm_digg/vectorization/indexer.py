@@ -1,9 +1,9 @@
 # -*- coding: UTF-8 -*-
 import time
-import pymagnitude
 import hnswlib
 import numpy as np
-from pysenal import write_json, read_json
+from multiprocessing import Queue, Process
+from pysenal import write_json, read_json, read_jsonline_lazy
 from wsdm_digg.constants import DATA_DIR
 
 
@@ -13,12 +13,45 @@ class VectorIndexer(object):
     def __init__(self, src_filename, dest_filename):
         self.src_filename = src_filename
         self.dest_filename = dest_filename
+        self.input_queue = Queue(-1)
+        self.output_queue = Queue(-1)
+        self._data = read_jsonline_lazy(self.src_filename)
+        self.worker_num = 8
+        self.workers = []
+
+        for _ in range(self.worker_num):
+            worker = Process(target=self._worker_loop)
+            self.workers.append(worker)
+        self._count_in_queue = 0
+        self.__prefetch()
+        for worker in self.workers:
+            worker.daemon = True
+            worker.start()
+
+    def __prefetch(self):
+        for _ in range(100):
+            line = next(self._data)
+            self.input_queue.put(line)
+            self._count_in_queue += 1
+
+    def _worker_loop(self):
+        while True:
+            line = self.input_queue.get()
+            if line is None:
+                break
+            items = line.split()
+            idx = items[0]
+            vec = np.fromstring(' '.join(items[1:]), dtype=float, sep=' ')
+            self.output_queue.put({'index': idx, 'vector': vec})
 
     def read_paper_item(self):
-        vectors = pymagnitude.Magnitude(self.src_filename)
-
-        for paper_id, vec in vectors:
-            yield paper_id, vec
+        for line in self._data:
+            item = self.output_queue.get()
+            yield item['index'], item['vector']
+            self.input_queue.put(line)
+        for _ in range(self._count_in_queue):
+            item = self.output_queue.get()
+            yield item['index'], item['vector']
 
     def build_index(self):
         indexer = hnswlib.Index(space='cosine', dim=self.dim)
@@ -60,7 +93,6 @@ class VectorSearcher(object):
         vec_id_list = vec_id_list[0]
         distances = distances[0]
         distances = 1.0 - distances
-        # print(list(self.idx2paper_id))
         paper_ids = [self.idx2paper_id[str(idx)] for idx in vec_id_list]
         return list(zip(paper_ids, distances))
 

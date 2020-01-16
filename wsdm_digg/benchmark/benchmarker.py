@@ -100,7 +100,7 @@ def main():
     parser.add_argument('-dest_filename', type=str, required=True, )
     parser.add_argument('-batch_size', type=int, default=100)
     parser.add_argument('-parallel_count', type=int, default=20)
-    parser.add_argument('-top_n', type=int, default=20)
+    parser.add_argument('-top_n', type=int, default=100)
     parser.add_argument('-is_submit', action='store_true')
     args = parser.parse_args()
 

@@ -18,7 +18,7 @@ python3 -m spacy download en
 2. setting value `ES_BASE_URL` in constants.py with your  configured elastic search endpoint.
 
 ### Prepare Data
-1. unzip file and put all files under `data/` folder
+1. unzip file and put all files under `data/` folder, rename `test.csv` to `test_release.csv`
 2. execute `bash scripts/prepare_data.sh` in **project root folder** to build the data for next step
 
 ### Execute the retrieval process

@@ -49,4 +49,4 @@ the above script includes three main parts
     
 ## train the model
 
-The model required to be trained in this project including the
+The model required to be trained in this project just the Bert based reranking model

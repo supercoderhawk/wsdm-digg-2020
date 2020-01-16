@@ -1,4 +1,7 @@
 # WSDM 2020 Workshop
+https://biendata.com/competition/wsdm2020/
+
+ID: @nlp-rabbit 
 
 ## Prerequirements
 Python >= 3.6

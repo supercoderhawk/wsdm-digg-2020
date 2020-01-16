@@ -8,6 +8,18 @@ from torch.multiprocessing import Queue, Process
 
 class VectorizationDataLoader(object):
     def __init__(self, src_filename, tokenizer, args, existed_ids=None):
+        self.src_filename = src_filename
+        self.tokenizer = tokenizer
+        self.args = args
+        self.existed_ids = existed_ids
+
+    def __iter__(self):
+        i = VectorizationDataItertor(self.src_filename, self.tokenizer, self.args, self.existed_ids)
+        return iter(i)
+
+
+class VectorizationDataItertor(object):
+    def __init__(self, src_filename, tokenizer, args, existed_ids=None):
         self.args = args
         self.src_filename = src_filename
         self.tokenizer = tokenizer
@@ -96,10 +108,14 @@ class VectorizationDataLoader(object):
         data_id_list = []
         mask_ids_list = []
         sent_lens_list = []
+        is_text_list = False
         for item in raw_batch:
             if prefix:
                 if prefix == 'query':
-                    text = item['query']
+                    if self.query_field == 'cites_text':
+                        text = item['query']
+                    else:
+                        text = item[self.query_field]
                 elif prefix == 'true':
                     text = item['true_doc']
                 elif prefix == 'false':
@@ -110,16 +126,41 @@ class VectorizationDataLoader(object):
                 if self.data_type == 'doc':
                     text = item['title'] + ' ' + item['abstract']
                 elif self.data_type == 'query':
-                    text = item[self.query_field]
-            token_ids = self.tokenizer.encode(text, max_length=self.max_length,
-                                              add_special_tokens=True)
-            sent_lens_list.append(len(token_ids) - 1)
-            mask_ids = np.arange(self.max_length) <= len(token_ids)
-            pad_len = self.max_length - len(token_ids)
-            token_ids.extend([pad_id] * pad_len)
-            token_ids_list.append(token_ids)
-            data_id_list.append(item[src_data_id])
-            mask_ids_list.append(mask_ids)
+                    if self.query_field == 'cites_text' and self.query_field not in item:
+                        text = item['query']
+                    else:
+                        text = item[self.query_field]
+                else:
+                    raise ValueError('error')
+            if isinstance(text, list):
+                text = text[:self.args.negative_sample_count]
+                list_size = len(text)
+                is_text_list = True
+                if not token_ids_list:
+                    token_ids_list = [[] for _ in range(list_size)]
+                    data_id_list = [[] for _ in range(list_size)]
+                    mask_ids_list = [[] for _ in range(list_size)]
+                    sent_lens_list = [[] for _ in range(list_size)]
+                for text_idx, single_text in enumerate(text):
+                    token_ids = self.tokenizer.encode(single_text, max_length=self.max_length,
+                                                      add_special_tokens=True)
+                    sent_lens_list[text_idx].append(len(token_ids) - 1)
+                    mask_ids = np.arange(self.max_length) <= len(token_ids)
+                    pad_len = self.max_length - len(token_ids)
+                    token_ids.extend([pad_id] * pad_len)
+                    token_ids_list[text_idx].append(token_ids)
+                    data_id_list[text_idx].append(item[src_data_id])
+                    mask_ids_list[text_idx].append(mask_ids)
+            else:
+                token_ids = self.tokenizer.encode(text, max_length=self.max_length,
+                                                  add_special_tokens=True)
+                sent_lens_list.append(len(token_ids) - 1)
+                mask_ids = np.arange(self.max_length) <= len(token_ids)
+                pad_len = self.max_length - len(token_ids)
+                token_ids.extend([pad_id] * pad_len)
+                token_ids_list.append(token_ids)
+                data_id_list.append(item[src_data_id])
+                mask_ids_list.append(mask_ids)
 
         if prefix:
             token_field = '{}_tokens'.format(prefix)
@@ -131,10 +172,16 @@ class VectorizationDataLoader(object):
             mask_field = 'masks'
             data_id_field = 'data_ids'
             sent_len_field = 'sent_lens'
-        batch = {token_field: np.array(token_ids_list, dtype=np.long),
-                 sent_len_field: np.array(sent_lens_list, dtype=np.long),
-                 mask_field: np.array(mask_ids_list),
-                 data_id_field: data_id_list}
+        if not is_text_list:
+            batch = {token_field: np.array(token_ids_list, dtype=np.long),
+                     sent_len_field: np.array(sent_lens_list, dtype=np.long),
+                     mask_field: np.array(mask_ids_list),
+                     data_id_field: data_id_list}
+        else:
+            batch = {token_field: [np.array(t, dtype=np.long) for t in token_ids_list],
+                     sent_len_field: [np.array(t, dtype=np.long) for t in sent_lens_list],
+                     mask_field: [np.array(t) for t in mask_ids_list],
+                     data_id_field: data_id_list}
         return batch
 
     def __prefetch(self):
@@ -160,9 +207,17 @@ class VectorizationDataLoader(object):
             if 'data_ids' in key:
                 new_batch[key] = val
             else:
-                t = torch.tensor(val)
-                if torch.cuda.is_available():
-                    t = t.cuda()
+                if isinstance(val, list) and isinstance(val[0], np.ndarray):
+                    t = []
+                    for single_np in val:
+                        single_t = torch.tensor(single_np)
+                        if torch.cuda.is_available():
+                            single_t = single_t.cuda()
+                        t.append(single_t)
+                else:
+                    t = torch.tensor(val)
+                    if torch.cuda.is_available():
+                        t = t.cuda()
                 new_batch[key] = t
 
         return new_batch

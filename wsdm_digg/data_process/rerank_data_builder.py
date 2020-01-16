@@ -1,5 +1,6 @@
 # -*- coding: UTF-8 -*-
 import os
+import copy
 import random
 import argparse
 from multiprocessing import Pool
@@ -31,6 +32,7 @@ class RerankDataBuilder(object):
         parser.add_argument('-query_field', type=str, default='cites_text',
                             choices=['cites_text', 'description_text'])
         parser.add_argument('-sample_count', type=int, default=1)
+        parser.add_argument('-aggregate_sample', action='store_true')
         parser.add_argument('-offset', type=int, default=50)
         args = parser.parse_args()
         return args
@@ -39,7 +41,7 @@ class RerankDataBuilder(object):
         self.build_data()
 
     def build_data(self):
-        pool = Pool(10)
+        pool = Pool(20)
 
         desc_id2item = {}
 
@@ -57,6 +59,12 @@ class RerankDataBuilder(object):
                 docs = item['docs']
                 item.pop('docs')
                 item.pop('keywords')
+                new_item_list = []
+                new_item_dict = copy.deepcopy(item)
+                new_item_dict['true_paper_id'] = true_paper_id
+                new_item_dict['false_paper_id'] = []
+                new_item_dict['cites_text'] = cites_text
+                new_item_dict['description_text'] = true_item['description_text']
                 for idx in range(self.args.sample_count):
                     train_pair = self.select_train_pair(docs,
                                                         true_paper_id,
@@ -64,8 +72,14 @@ class RerankDataBuilder(object):
                                                         idx)
                     new_item = {**train_pair, **item, 'cites_text': cites_text,
                                 'description_text': true_item['description_text']}
-                    new_item_chunk.append(new_item)
+                    new_item_list.append(new_item)            
+                    new_item_dict['false_paper_id'].append(train_pair['false_paper_id'])
+                if     self.args.aggregate_sample:
+                    new_item_chunk.append(new_item_dict)
+                else:
+                    new_item_chunk.extend(new_item_list)    
             built_items = pool.map(self.build_single_query, new_item_chunk)
+            built_items = [i for i in built_items if i]
             append_jsonlines(self.dest_filename, built_items)
 
     def select_train_pair(self, doc_list, true_doc_id, select_strategy, intra_offset):
@@ -108,9 +122,20 @@ class RerankDataBuilder(object):
     def build_single_query(self, item):
         query = item[self.args.query_field]
         true_paper = get_paper(item['true_paper_id'])
-        false_paper = get_paper(item['false_paper_id'])
-        true_text = true_paper['title'] + true_paper['abstract']
-        false_text = false_paper['title'] + false_paper['abstract']
+        true_text = true_paper['title'] + ' ' + true_paper['abstract']
+        if isinstance(item['false_paper_id'], str):
+            false_paper = get_paper(item['false_paper_id'])
+            false_text = false_paper['title'] + ' ' + false_paper['abstract']
+        elif isinstance(item['false_paper_id'], list):
+            # false_paper = []
+            false_text = []
+            for pid in item['false_paper_id']:
+                paper = get_paper(pid)
+                # false_paper.append(paper)    
+                false_text.append(paper['title'] + ' ' + paper['abstract'])
+        else:
+            raise ValueError('false paper id type error')
+        
         train_item = {'query': query,
                       'true_doc': true_text,
                       'false_doc': false_text,

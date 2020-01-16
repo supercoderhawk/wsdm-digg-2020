@@ -12,7 +12,7 @@ class PlmModel(nn.Module):
         self.attn_proj = nn.Linear(self.args.dim_size, self.args.dim_size)
         self.vector_merge_proj = nn.Linear(self.args.dim_size * 2, self.args.dim_size)
 
-    def forward(self, batch, prefix):
+    def forward(self, batch, prefix=None):
         if not prefix:
             token_field = 'tokens'
             mask_field = 'masks'
@@ -22,19 +22,40 @@ class PlmModel(nn.Module):
             mask_field = '{}_masks'.format(prefix)
             len_field = '{}_sent_lens'.format(prefix)
 
-        output = self.plm_model(input_ids=batch[token_field],
-                                attention_mask=batch[mask_field])[0]
+        token_ids = batch[token_field]
+        masks = batch[mask_field]
+        sent_lens = batch[len_field]
+
+        if isinstance(token_ids, list):
+            sent_embed = []
+            for idx in range(len(token_ids)):
+                single_embed = self.get_single_sent_embedding(token_ids[idx],
+                                                              masks[idx],
+                                                              sent_lens[idx])
+                sent_embed.append(single_embed)
+
+        elif isinstance(token_ids, torch.Tensor):
+            sent_embed = self.get_single_sent_embedding(token_ids, masks, sent_lens)
+        else:
+            raise ValueError('token type error')
+        return sent_embed
+
+    def get_single_sent_embedding(self, token_ids, masks, sent_lens):
+        output = self.plm_model(input_ids=token_ids,
+                                attention_mask=masks)[0]
 
         cls_embed = output[:, 0]
         token_embed = output[:, 1:]
-        token_mask = batch[mask_field][:, 1:].unsqueeze(2)
-        sent_lens = batch[len_field]
+        token_mask = ~masks[:, 1:].unsqueeze(2)
 
         if self.args.embed_mode == 'USE':
             sent_embed = self.get_USE_embedding(cls_embed, token_embed, token_mask, sent_lens)
-        else:
+        elif self.args.embed_mode == 'attention':
             sent_embed = self.get_attention_embedding(cls_embed, token_embed, token_mask)
-
+        elif self.args.embed_mode == 'CLS':
+            sent_embed = cls_embed
+        else:
+            raise ValueError('embed mode error')
         return sent_embed
 
     def get_attention_embedding(self, cls_embed, token_embed, token_mask):
@@ -63,6 +84,6 @@ class PlmModel(nn.Module):
         token_embed.masked_fill_(token_mask, 0.0)
         factor = torch.sqrt(sent_lens.type(torch.float)).unsqueeze(1)
         sent_embed = token_embed.sum(dim=1) / factor
-        # if self.args.use_context_vector:
-        #     pass
+        if self.args.use_context_vector:
+            sent_embed = self.vector_merge_proj(torch.cat([sent_embed, cls_embed],dim=1))
         return sent_embed

@@ -3,20 +3,22 @@ import torch
 from wsdm_digg.reranking.plm_rerank import PlmRerank
 from wsdm_digg.reranking.plm_knrm import PlmKnrm
 from wsdm_digg.reranking.plm_conv_knrm import PlmConvKnrm
-
-_MODEL_NAME_SET = {'plm', 'knrm', 'conv-knrm'}
+from wsdm_digg.reranking.plm_matchpyramid import PlmMatchPyramid
+_MODEL_NAME_SET = {'plm', 'knrm', 'conv-knrm','mp','pairwise'}
 
 
 def load_rerank_model(args):
     model_name = args.rerank_model_name
     if model_name not in _MODEL_NAME_SET:
         raise ValueError('model name {} is not implemented'.format(model_name))
-    if model_name == 'plm':
+    if model_name == 'plm' or model_name == 'pairwise':
         model = PlmRerank(args)
     elif model_name == 'knrm':
         model = PlmKnrm(args)
     elif model_name == 'conv-knrm':
         model = PlmConvKnrm(args)
+    elif model_name == 'mp':
+        model = PlmMatchPyramid(args)
     return model
 
 

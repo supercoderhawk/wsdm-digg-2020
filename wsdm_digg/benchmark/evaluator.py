@@ -1,7 +1,7 @@
 # -*- coding: UTF-8 -*-
 from pysenal.io import *
 from pysenal.utils import *
-from wsdm_digg.constants import DATA_DIR
+from wsdm_digg.constants import DATA_DIR, RESULT_DIR
 
 
 class Evaluator(object):
@@ -10,6 +10,8 @@ class Evaluator(object):
         self.true_data = self.true_data_loader()
 
     def evaluation_recall(self, pred_filename, top_n):
+        if not pred_filename.startswith('/'):
+            pred_filename = RESULT_DIR + pred_filename
         hit_count = 0
         total_count = 0
         for doc in read_jsonline_lazy(pred_filename):
@@ -31,6 +33,7 @@ class Evaluator(object):
                 sum_ap += 1 / (val + 1)
             query_count += 1
         map = sum_ap / query_count
+        print(query_count)
         return map
 
     def true_data_loader(self):

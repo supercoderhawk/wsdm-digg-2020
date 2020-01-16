@@ -17,7 +17,8 @@ class RawDataFormatter(object):
     def run(self):
         self.candidate_formatter()
         self.train_data_formatter()
-        self.validation_data_formatter()
+        self.validation_data_formatter(self.dirname + 'validation.csv')
+        self.validation_data_formatter(self.dirname + 'test_release.csv')
 
     def candidate_formatter(self):
         candidiate_paper_id_list = []
@@ -56,9 +57,10 @@ class RawDataFormatter(object):
 
             append_jsonline(dest_filename, item)
 
-    def validation_data_formatter(self):
-        valid_filename = self.dirname + 'validation.csv'
-        dest_filename = os.path.splitext(valid_filename)[0] + '.jsonl'
+    def validation_data_formatter(self, src_filename, dest_filename=None):
+        valid_filename = src_filename
+        if dest_filename is None:
+            dest_filename = os.path.splitext(valid_filename)[0] + '.jsonl'
         if os.path.exists(dest_filename):
             os.remove(dest_filename)
         df = pd.read_csv(valid_filename).replace(np.nan, '', regex=True)

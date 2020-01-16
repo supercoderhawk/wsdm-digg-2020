@@ -18,6 +18,11 @@ class DataSplitter(object):
         test_items = items[training_count:]
         write_jsonline(DATA_DIR + 'train.jsonl', training_items)
         write_jsonline(DATA_DIR + 'test.jsonl', test_items)
+        # random.shuffle(test_items)
+        # random.shuffle(test_items)
+        # random.shuffle(test_items)
+        # # only use 2000 items as rerank validation (named as test_rerank) data to save validation time
+        # write_jsonline(DATA_DIR + 'test_rerank.jsonl', test_items[:2000])
 
 
 if __name__ == '__main__':

@@ -11,6 +11,8 @@ ES_BASE_URL = 'http://192.168.3.131:9200'
 ES_API_URL = ES_BASE_URL + '/wsdm_digg'
 RESULT_DIR = DATA_DIR + 'result/'
 SUBMIT_DIR = DATA_DIR + 'submit_result/'
+RERANK_RESULT_DIR = DATA_DIR + 'rerank_result/'
+MODEL_DIR = DATA_DIR + 'rerank/'
 
 BERT_BASE_UNCASED = 'bert-base-uncased'
 XLNET_BASE_CASED = 'xlnet-base-cased'

@@ -3,20 +3,19 @@ import time
 import hnswlib
 import numpy as np
 from multiprocessing import Queue, Process
-from pysenal import write_json, read_json, read_jsonline_lazy
+from pysenal import write_json, read_json, read_lines_lazy
 from wsdm_digg.constants import DATA_DIR
 
 
 class VectorIndexer(object):
     dim = 768
 
-    def __init__(self, src_filename, dest_filename):
+    def __init__(self, src_filename):
         self.src_filename = src_filename
-        self.dest_filename = dest_filename
         self.input_queue = Queue(-1)
         self.output_queue = Queue(-1)
-        self._data = read_jsonline_lazy(self.src_filename)
-        self.worker_num = 8
+        self._data = read_lines_lazy(self.src_filename)
+        self.worker_num = 20
         self.workers = []
 
         for _ in range(self.worker_num):
@@ -42,18 +41,35 @@ class VectorIndexer(object):
             items = line.split()
             idx = items[0]
             vec = np.fromstring(' '.join(items[1:]), dtype=float, sep=' ')
-            self.output_queue.put({'index': idx, 'vector': vec})
+            if vec.shape != (self.dim,):
+                self.output_queue.put({})
+            else:
+                self.output_queue.put({'index': idx, 'vector': vec})
 
     def read_paper_item(self):
         for line in self._data:
             item = self.output_queue.get()
-            yield item['index'], item['vector']
+            if item:
+                yield item['index'], item['vector']
             self.input_queue.put(line)
         for _ in range(self._count_in_queue):
             item = self.output_queue.get()
-            yield item['index'], item['vector']
+            if item:
+                yield item['index'], item['vector']
 
-    def build_index(self):
+    def load_vector(self, verbose=False):
+        start = time.time()
+        id2vector = {}
+        for paper_id, vector in self.read_paper_item():
+            id2vector[paper_id] = vector
+        duration = time.time() - start
+        if verbose:
+            m = duration // 60
+            s = duration % 60
+            print('vector loaded, time consumed {}min {:.2f}sec'.format(m, s))
+        return id2vector
+
+    def build_index(self, dest_filename):
         indexer = hnswlib.Index(space='cosine', dim=self.dim)
         paper_id_list = []
         vector_list = []
@@ -71,13 +87,18 @@ class VectorIndexer(object):
         msg_tmpl = 'vector loading completed time consumed {:.0f}min {:.2f}sec'
         print(msg_tmpl.format(duration // 60, duration % 60))
         num_elements = len(paper_id_list)
-        indexer.init_index(max_elements=num_elements, ef_construction=200, M=16)
+        indexer.init_index(max_elements=num_elements, ef_construction=200, M=100)
         # hnswlib only supports number based index,
         # therefore, mapper from number id to paper id is required to be saved
+        # vector_data = np.array(vector_list)
         indexer.add_items(vector_list, vector_id_list)
-        indexer.set_ef(100)
-        indexer.save_index(self.dest_filename)
-        write_json(self.dest_filename + '.map', idx2paper_id)
+        indexer.set_ef(500)
+        indexer.save_index(dest_filename)
+        write_json(dest_filename + '.map', idx2paper_id)
+
+    def __del__(self):
+        for worker in self.workers:
+            worker.terminate()
 
 
 class VectorSearcher(object):
@@ -98,5 +119,5 @@ class VectorSearcher(object):
 
 
 if __name__ == '__main__':
-    VectorIndexer(DATA_DIR + 'candidate_paper_scibert_vector.magnitude',
-                  DATA_DIR + 'candidate_paper_scibert_index.bin').build_index()
+    indexer = VectorIndexer(DATA_DIR + 'candidate_paper_dssm_loss_vector.txt')
+    indexer.build_index(DATA_DIR + 'candidate_paper_dssm_loss_index.bin')

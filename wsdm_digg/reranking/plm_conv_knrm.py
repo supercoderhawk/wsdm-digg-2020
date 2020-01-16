@@ -34,7 +34,8 @@ class PlmConvKnrm(nn.Module):
             self.conv_list.append(conv)
         self.kernel = RbfKernelList(self.mean_list, self.stddev_list)
         self.query_max_len = self.args.query_max_len
-        self.doc_max_len = self.args.max_len - self.query_max_len - self.args.special_token_count
+        # self.doc_max_len = self.args.max_len - self.query_max_len - self.args.special_token_count
+        self.doc_max_len = self.args.doc_max_len
         self.use_context_vector = self.args.use_context_vector
         feature_size = len(self.mean_list) * self.window_count ** 2
         if self.use_context_vector:
@@ -46,7 +47,18 @@ class PlmConvKnrm(nn.Module):
         # self.score_proj = nn.Linear(len(self.mean_list), 1, bias=True)
 
     def forward(self, token_ids, segment_ids, token_mask, query_lens, doc_lens):
+        # token_ids, segment_ids, token_mask, query_lens, doc_lens
+        #
         batch_size = query_lens.size(0)
+        query_embed = self.plm_model(input_ids=token_ids[0],
+                                     attention_mask=token_mask[0],
+                                     token_type_ids=segment_ids[0])[0]
+        query_embed = query_embed[:, 1:self.query_max_len + 1]
+        doc_embed = self.plm_model(input_ids=token_ids[1],
+                                   attention_mask=token_mask[1],
+                                   token_type_ids=segment_ids[1])[0]
+        doc_embed = doc_embed[:, 1:self.doc_max_len + 1]
+
         contextualized_embed = self.plm_model(input_ids=token_ids,
                                               attention_mask=token_mask,
                                               token_type_ids=segment_ids)[0]

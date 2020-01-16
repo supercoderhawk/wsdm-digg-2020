@@ -24,14 +24,16 @@ def parse_args(args=None, parser=None):
     parser.add_argument("-scheduler_step", type=int, default=10000, help='')
     parser.add_argument("-scheduler_gamma", type=float, default=0.5, help='')
     parser.add_argument("-lazy_loading", action='store_true', help='')
+    parser.add_argument("-separate_query_doc", action='store_true', help='')
 
     # model parameter
     parser.add_argument("-plm_model_name", required=False, type=str, help='')
     parser.add_argument("-rerank_model_name", required=False, type=str,
-                        choices=['plm', 'knrm', 'conv-knrm'], help='')
+                        choices=['plm', 'knrm', 'conv-knrm','mp','pairwise'], help='')
     parser.add_argument("-max_len", type=int, default=512, help='')
     parser.add_argument("-dim_size", type=int, default=768, help='')
-    parser.add_argument("-query_max_len", type=int, default=100, help='')
+    parser.add_argument("-query_max_len", type=int, default=150, help='')
+    parser.add_argument("-doc_max_len", type=int, default=500, help='')
     parser.add_argument("-special_token_count", type=int, default=2, choices=[2, 3], help='')
     parser.add_argument("-use_context_vector", action='store_true', help='')
     parser.add_argument("-mean_list", type=float, metavar='N', nargs='+', help='')

@@ -3,7 +3,7 @@
 DATA_DIR=${PWD}/data/
 ES_RESULT_FILE=$DATA_DIR/validation_es_result.jsonl
 FINAL_RESULT_FILENAME=$DATA_DIR/validation_final_result.jsonl
-MODEL_PATH=$MODEL_DIR/rerank_model.model
+MODEL_PATH=$DATA_DIR/models/rerank_model.model
 TOPK=20
 
 # run elasticsearch (BM25)

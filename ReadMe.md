@@ -24,9 +24,11 @@ python3 -m spacy download en
 1. unzip file and put all files under `data/` folder, rename `test.csv` to `test_release.csv`
 2. execute `bash scripts/prepare_data.sh` in **project root folder** to build the data for next step
 
-### Execute the retrieval process
+### Execute the retrieval process end2end
 
-execute `bash scripts/run_retrieval.sh` in **project root folder**
+* put the model into `data/models/rerank_model.model`
+
+* execute `bash scripts/run_end2end.sh` in **project root folder**
 
 #### details
 the above script includes three main parts

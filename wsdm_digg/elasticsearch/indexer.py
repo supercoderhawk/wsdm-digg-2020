@@ -14,8 +14,7 @@ class ElasticSearchIndexer(object):
     retry_count = 10
 
     def __init__(self):
-        # self.base_url = ES_API_URL
-        self.base_url = 'http://192.168.3.132:9200/wsdm_digg'
+        self.base_url = ES_API_URL
 
     def run(self):
         self.delete_index()

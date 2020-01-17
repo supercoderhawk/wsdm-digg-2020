@@ -87,7 +87,7 @@ class PlmTrainer(object):
                 accumulate_step += 1
 
                 # torch.nn.utils.clip_grad_value_(model.parameters(), 0.01)
-                stop_scheduler_step = self.args.scheduler_step * 8
+                # stop_scheduler_step = self.args.scheduler_step * 8
                 if accumulate_step % self.args.gradient_accumulate_step == 0:
                     optimizer.step()
                     optimizer.zero_grad()

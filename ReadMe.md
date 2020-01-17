@@ -23,13 +23,11 @@ python3 -m spacy download en
 ### Prepare Data
 1. unzip file and put all files under `data/` folder, rename `test.csv` to `test_release.csv`
 
-2. Download [SciBert](https://s3-us-west-2.amazonaws.com/ai2-s2-research/scibert/huggingface_pytorch/scibert_scivocab_uncased.tar) , unzip it to data folder
+2. Download [model](https://www.dropbox.com/s/6zcydsyf8tcgs7l/submit_model.zip?dl=0) , unzip it to data folder
 
 3. execute `bash scripts/prepare_data.sh` in **project root folder** to build the data for next step
 
 ### Execute the retrieval process end2end
-
-* put the model into `data/models/rerank_model.model`
 
 * execute `bash scripts/run_end2end.sh` in **project root folder**
 

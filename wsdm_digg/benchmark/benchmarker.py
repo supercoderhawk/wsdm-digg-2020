@@ -25,12 +25,21 @@ class Benchmarker(object):
         self.src_filename = src_filename
         if is_submit:
             self.src_filename = DATA_DIR + 'validation.jsonl'
-            self.dest_filename = SUBMIT_DIR + dest_filename
+            if dest_filename.startswith('/'):
+                self.dest_filename = dest_filename
+            else:
+                self.dest_filename = SUBMIT_DIR + dest_filename
         else:
-            self.dest_filename = RESULT_DIR + dest_filename
+            if dest_filename.startswith('/'):
+                self.dest_filename = dest_filename
+            else:
+                self.dest_filename = RESULT_DIR + dest_filename
         if is_final_submit:
             self.src_filename = DATA_DIR + 'test_release.jsonl'
-            self.dest_filename = SUBMIT_DIR + dest_filename
+            if dest_filename.startswith('/'):
+                self.dest_filename = dest_filename
+            else:
+                self.dest_filename = SUBMIT_DIR + dest_filename
         self.dest_csv_filename = os.path.splitext(self.dest_filename)[0] + '.csv'
         self.src_count = int(os.popen('wc -l {}'.format(self.src_filename)).read().split()[0])
         self.searched_id = self.get_searched_doc()
@@ -97,9 +106,9 @@ class Benchmarker(object):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-src_filename', type=str, default=DATA_DIR + 'test.jsonl')
-    parser.add_argument('-dest_filename', type=str, required=True, )
+    parser.add_argument('-dest_filename', type=str, required=True)
     parser.add_argument('-batch_size', type=int, default=100)
-    parser.add_argument('-parallel_count', type=int, default=20)
+    parser.add_argument('-parallel_count', type=int, default=30)
     parser.add_argument('-top_n', type=int, default=100)
     parser.add_argument('-is_submit', action='store_true')
     args = parser.parse_args()

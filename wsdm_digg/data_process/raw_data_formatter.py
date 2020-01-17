@@ -8,6 +8,10 @@ from wsdm_digg.constants import *
 
 
 class RawDataFormatter(object):
+    """
+    1. transform raw candidate paper data, train validation and test data into json line format
+    2. extract the citation sentence which has citation indicator  '[**##**]'
+    """
     nlp = spacy.load('en', disable=['ner', 'parser', 'textcat'])
 
     def __init__(self, dirname):

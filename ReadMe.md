@@ -6,13 +6,13 @@ ID: @nlp-rabbit
 ## Prerequirements
 Python >= 3.6
 
-## Reproduce the result
-### Install Requirements
+## Reproduce the result 
+### Clone Code and Install Requirements
 
 ```bash
+git clone https://github.com/supercoderhawk/wsdm-digg-2020
 pip3 install -r requirements.txt
 python3 -m spacy download en
-
 ```
 
 ### Setup ElasticSearch
@@ -21,9 +21,10 @@ python3 -m spacy download en
 2. setting value `ES_BASE_URL` in constants.py with your  configured elastic search endpoint.
 
 ### Prepare Data
-1. unzip file and put all files under `data/` folder, rename `test.csv` to `test_release.csv`
+1. unzip file and put all files under `data/` folder, **rename `test.csv` to `test_release.csv`**
 
-2. Download [model](https://www.dropbox.com/s/6zcydsyf8tcgs7l/submit_model.zip?dl=0) , unzip it to data folder
+2. Download [model](https://www.dropbox.com/s/6zcydsyf8tcgs7l/submit_model.zip?dl=0) , unzip it and put files into `data`
+ folder
 
 3. execute `bash scripts/prepare_data.sh` in **project root folder** to build the data for next step
 
@@ -31,27 +32,18 @@ python3 -m spacy download en
 
 * execute `bash scripts/run_end2end.sh` in **project root folder**
 
-#### details
+### Details
 the above script includes three main parts
 
 1. execute elasticsearch to retrieval candidate papers
 
     core logic in `search\search.py` which is called by `benchmark\benchmark.py`
+    
+2. execute the rerank by BERT
 
-2. prepare rerank data from elastic search result (baseline result)
+    core logic in `reranking\predict.py`, model code in `reranking\plm_rerank.py`
 
-    core logic in `reranking\predict.py`, model in `reranking\plm_rerank.py`
-3. execute the rerank by BERT
-
-### others
-1. In this project, abbreviation `plm` means `Pretrained Language Model`.
-
-2. methods tried but not effective:
-    1. Bert-Knrm, Bert-ConvKnrm paper: [CEDR: Contextualized Embeddings for Document Ranking](https://arxiv.org/abs/1904.07094), code in `reranking\plm_knrm.py` and `reranking\plm_conv_knrm.py`
-
-    2. Bert based sentence vectorization method, paper [Universal Sentence Encoder](https://arxiv.org/abs/1803.11175) (Use BERT CLS output replaced vanilla transformer trained from scratch) code in `vectorization\plm_vectorization.py` and `vectorization\predict.py`
-
-## basic architecture  
+## Basic Algorithm Architecture  
 
 1. recall phase
     1. keywords and keyphrase extraction
@@ -70,7 +62,7 @@ the above script includes three main parts
     training data built by first stage (BM25) search result
     loss is marginal loss (hinge loss)
 
-## train the model
+## Train the Model
 
 The model required to be trained just the Bert based reranking model
 
@@ -85,3 +77,18 @@ bash scripts/train_rerank.sh
 bash scripts/predict_rerank.sh
 
 ```
+
+## Others
+1. In this project, abbreviation `plm` means `Pretrained Language Model`.
+
+2. methods tried but **not effective**:
+    1. Bert-Knrm, Bert-ConvKnrm paper: [CEDR: Contextualized Embeddings for Document Ranking](https://arxiv.org/abs/1904.07094), code in `reranking\plm_knrm.py` and `reranking\plm_conv_knrm.py`
+
+    2. Bert based sentence vectorization method, paper [Universal Sentence Encoder](https://arxiv.org/abs/1803.11175) (Use BERT CLS output replaced vanilla transformer trained from scratch) code in `vectorization\plm_vectorization.py` and `vectorization\predict.py`
+    
+    
+## related papaer
+
+[1] [Understanding the Behaviors of BERT in Ranking
+](https://arxiv.org/abs/1904.07531)
+    

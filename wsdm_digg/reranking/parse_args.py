@@ -32,7 +32,7 @@ def parse_args(args=None, parser=None):
                         choices=['plm', 'knrm', 'conv-knrm','mp','pairwise'], help='')
     parser.add_argument("-max_len", type=int, default=512, help='')
     parser.add_argument("-dim_size", type=int, default=768, help='')
-    parser.add_argument("-query_max_len", type=int, default=150, help='')
+    parser.add_argument("-query_max_len", type=int, default=100, help='')
     parser.add_argument("-doc_max_len", type=int, default=500, help='')
     parser.add_argument("-special_token_count", type=int, default=2, choices=[2, 3], help='')
     parser.add_argument("-use_context_vector", action='store_true', help='')

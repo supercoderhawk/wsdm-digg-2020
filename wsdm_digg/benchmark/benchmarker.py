@@ -80,7 +80,7 @@ class Benchmarker(object):
             ret = searcher.search(doc['description_text'], doc['cites_text'], self.top_n)
             return {'description_id': doc['description_id'], **ret}
         except Exception as e:
-            # print(e)
+            print(e)
             return None
 
     def get_input_batch(self):

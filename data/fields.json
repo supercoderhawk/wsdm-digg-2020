@@ -21,6 +21,10 @@
     "TA": {
       "type": "text",
       "analyzer": "english_analyzer"
+    },
+    "TAK": {
+      "type": "text",
+      "analyzer": "english_analyzer"
     }
   }
 }

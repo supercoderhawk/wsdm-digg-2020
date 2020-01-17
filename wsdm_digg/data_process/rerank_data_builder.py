@@ -72,12 +72,12 @@ class RerankDataBuilder(object):
                                                         idx)
                     new_item = {**train_pair, **item, 'cites_text': cites_text,
                                 'description_text': true_item['description_text']}
-                    new_item_list.append(new_item)            
+                    new_item_list.append(new_item)
                     new_item_dict['false_paper_id'].append(train_pair['false_paper_id'])
-                if     self.args.aggregate_sample:
+                if self.args.aggregate_sample:
                     new_item_chunk.append(new_item_dict)
                 else:
-                    new_item_chunk.extend(new_item_list)    
+                    new_item_chunk.extend(new_item_list)
             built_items = pool.map(self.build_single_query, new_item_chunk)
             built_items = [i for i in built_items if i]
             append_jsonlines(self.dest_filename, built_items)
@@ -135,7 +135,7 @@ class RerankDataBuilder(object):
                 false_text.append(paper['title'] + ' ' + paper['abstract'])
         else:
             raise ValueError('false paper id type error')
-        
+
         train_item = {'query': query,
                       'true_doc': true_text,
                       'false_doc': false_text,

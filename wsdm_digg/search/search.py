@@ -58,7 +58,7 @@ class KeywordSearch(object):
             # searched_paper_id = self.prf(query_terms, paper_list[:1], top_n)
             for doc in paper_list:
                 searched_paper_id.append(doc['_id'])
-            # When query text is unusual , the ES search result will be less than three
+            # When query text is abnormal , the ES search result will be less than three
             # then replace it with default value just to avoid submit error
             if len(searched_paper_id) < 3:
                 searched_paper_id = self.default_result

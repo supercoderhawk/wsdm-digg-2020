@@ -1,11 +1,11 @@
 #!/bin/bash
 
-EXP_NAME='only_TA_sample8_new'
+EXP_NAME='only_TA'
 DATA_DIR=${PWD}/data
 #TRAINING_FILENAME=$DATA_DIR/cite_textrank_top10_rerank_random.jsonl
 #TRAINING_FILENAME=$DATA_DIR/cite_textrank_top10_rerank_search_result.jsonl
-#TRAINING_FILENAME=$DATA_DIR/only_TA_search_result.jsonl
-TRAINING_FILENAME=$DATA_DIR/only_TA_sample8.jsonl.bak
+TRAINING_FILENAME=$DATA_DIR/only_TA_search_result.jsonl
+#TRAINING_FILENAME=$DATA_DIR/only_TA.jsonl
 #TRAINING_FILENAME=$DATA_DIR/cite_textrank_top10_rerank_search_result_false_top.jsonl
 TEST_FILENAME=$DATA_DIR/test.jsonl
 
@@ -17,6 +17,7 @@ RERANK_MODEL_NAME='plm'
 #RERANK_MODEL_NAME='knrm'
 #RERANK_MODEL_NAME='conv-knrm'
 #RERANK_MODEL_NAME='mp'
+#RERANK_MODEL_NAME='pairwise'
 
 DEST_DIR=$DATA_DIR/rerank/${EXP_NAME}_${RERANK_MODEL_NAME}/
 #DEST_DIR=$DATA_DIR/rerank/${EXP_NAME}_${RERANK_MODEL_NAME}_context/

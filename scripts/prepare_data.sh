@@ -7,3 +7,5 @@ python3 wsdm_digg/data_process/data_split.py
 
 # build elasticsearch indexing
 python3 wsdm_digg/elasticsearch/indexer.py
+
+echo 'index building done!'

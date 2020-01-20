@@ -60,7 +60,8 @@ the above script includes three main parts
     Bert based rerank (SciBert from AllenAI), single model, not have any ensemble methods
     
     training data built by first stage (BM25) search result
-    loss is marginal loss (hinge loss)
+    
+    loss is marginal loss (hinge loss) which is widely used in ranking scenario
 
 ## Train the Model
 
